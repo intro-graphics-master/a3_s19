@@ -302,8 +302,8 @@ class Basic_Shader extends Shader
 }
 
 
-const Phong_Shader = defs.Phong_Shader =
-class Phong_Shader extends Shader
+const Phong_Shader_Reduced = defs.Phong_Shader_Reduced =
+class Phong_Shader_Reduced extends Shader
 {                                  // **Phong_Shader** is a subclass of Shader, which stores and maanges a GPU program.  
                                    // Graphic cards prior to year 2000 had shaders like this one hard-coded into them
                                    // instead of customizable shaders.  "Phong" Shading is a process of determining 
@@ -592,7 +592,7 @@ class Transforms_Sandbox_Base extends Scene
                                                   // Here we use a Phong shader and the Material stores the scalar 
                                                   // coefficients that appear in the Phong lighting formulas so that the
                                                   // appearance of particular materials can be tweaked via these numbers.
-      this.shader = new defs.Phong_Shader();
+      this.shader = new defs.Phong_Shader_Reduced();
       this.materials = { plastic: new Material( this.shader, 
                                     { ambient: .4, diffusivity: .4, specularity: .6, color: Color.of( .9,.5,.9,1 ) } ) };
 
