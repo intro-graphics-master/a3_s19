@@ -58,7 +58,8 @@ class Transforms_Sandbox extends Transforms_Sandbox_Base
                                                      // terms, in between drawing shapes).  We'll draw the parent shape first and
                                                      // then incrementally adjust the matrix it used to draw child shapes.
 
-                                                     // Position the root shape, a box, at the coordinate origin 0,0,0:
+                                                     // Position the root shape.  For this example, we'll use a box 
+                                                     // shape, and place it at the coordinate origin 0,0,0:
       model_transform = model_transform.times( Mat4.translation([ 0,0,0 ]) );
                                                                                               // Draw the top box:
       this.shapes.box.draw( context, program_state, model_transform, this.materials.plastic.override( yellow ) );
@@ -67,7 +68,7 @@ class Transforms_Sandbox extends Transforms_Sandbox_Base
       model_transform = model_transform.times( Mat4.translation([ 0, -2, 0 ]) );
                                                                            // Draw the ball, a child of the hierarchy root.
                                                                            // The ball will have its own children as well.
-      this.shapes.ball.draw( context, program_state, model_transform, this.materials.plastic.override( blue ) );
+      this.shapes.ball.draw( context, program_state, model_transform, this.materials.metal.override( blue ) );
                                                                       
                                                                       // Prepare to draw another box object 2 levels deep 
                                                                       // within our hierarchy.

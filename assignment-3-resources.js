@@ -492,8 +492,16 @@ class Movement_Controls extends Scene
           this. matrix().set( Mat4.inverse( this.inverse() ) );
         }, "black" );
       this.new_line();
-      this.key_triggered_button( "Look at origin from right", [ "2" ], () =>
+      this.key_triggered_button( "from right", [ "2" ], () =>
         { this.inverse().set( Mat4.look_at( Vec.of( 10,0,0 ), Vec.of( 0,0,0 ), Vec.of( 0,1,0 ) ) );
+          this. matrix().set( Mat4.inverse( this.inverse() ) );
+        }, "black" );
+      this.key_triggered_button( "from rear", [ "3" ], () =>
+        { this.inverse().set( Mat4.look_at( Vec.of( 0,0,-10 ), Vec.of( 0,0,0 ), Vec.of( 0,1,0 ) ) );
+          this. matrix().set( Mat4.inverse( this.inverse() ) );
+        }, "black" );   
+      this.key_triggered_button( "from left", [ "4" ], () =>
+        { this.inverse().set( Mat4.look_at( Vec.of( -10,0,0 ), Vec.of( 0,0,0 ), Vec.of( 0,1,0 ) ) );
           this. matrix().set( Mat4.inverse( this.inverse() ) );
         }, "black" );
       this.new_line();
@@ -578,7 +586,7 @@ class Transforms_Sandbox_Base extends Scene
   constructor()
     {                  // constructor(): Scenes begin by populating initial values like the Shapes and Materials they'll need.
       super();
-      this.hover = false;
+      this.hover = this.swarm = false;
                                                         // At the beginning of our program, load one of each of these shape 
                                                         // definitions onto the GPU.  NOTE:  Only do this ONCE per shape it
                                                         // would be redundant to tell it again.  You should just re-use the
@@ -594,11 +602,9 @@ class Transforms_Sandbox_Base extends Scene
                                                   // appearance of particular materials can be tweaked via these numbers.
       this.shader = new defs.Phong_Shader_Reduced();
       this.materials = { plastic: new Material( this.shader, 
-                                    { ambient: .4, diffusivity: .4, specularity: .6, color: Color.of( .9,.5,.9,1 ) } ) };
-
-                                                // *** Lights: *** Values of vector or point lights.  They'll be consulted by 
-                                                // the shader when coloring shapes.  See Light's class definition for inputs.
-      this.lights = [ new Light( Vec.of( 1,1,1,0 ), Color.of( 1,1,1,1 ), 100000 ) ];
+                                    { ambient: .2, diffusivity: 1, specularity: .5, color: Color.of( .9,.5,.9,1 ) } ),
+                           metal: new Material( this.shader, 
+                                    { ambient: .2, diffusivity: 1, specularity:  1, color: Color.of( .9,.5,.9,1 ) } ) };
     }
   make_control_panel()
     {                                 // make_control_panel(): Sets up a panel of interactive HTML elements, including
@@ -607,8 +613,10 @@ class Transforms_Sandbox_Base extends Scene
                                                 // The next line adds a live text readout of a data member of our Scene.
       this.live_string( box => { box.textContent = ( this.hover ? 0 : ( this.t % (2*Math.PI)).toFixed(2) ) + " radians" } ); 
       this.new_line();
-                                                // Add a button for controlling a data member of our Scene:
+                                                // Add buttons so the user can actively toggle data members of our Scene:
       this.key_triggered_button( "Hover dragonfly in place", [ "h" ], function() { this.hover ^= 1; } );
+      this.new_line();
+      this.key_triggered_button( "Swarm mode", [ "m" ], function() { this.swarm ^= 1; } );
     }
   display( context, program_state )
     {                                                // display():  Called once per frame of animation.  We'll isolate out
@@ -629,6 +637,12 @@ class Transforms_Sandbox_Base extends Scene
           program_state.set_camera( Mat4.translation([ 0,3,-10 ]) );
           program_state.projection_transform = Mat4.perspective( Math.PI/4, context.width/context.height, 1, 100 );
         }
-      program_state.lights = this.lights;
+
+                                                // *** Lights: *** Values of vector or point lights.  They'll be consulted by 
+                                                // the shader when coloring shapes.  See Light's class definition for inputs.
+      const t = this.t = program_state.animation_time/1000;
+      const angle = Math.sin( t );
+      const light_position = Mat4.rotation( angle, [ 1,0,0 ] ).times( Vec.of( 0,-1,1,0 ) );
+      program_state.lights = [ new Light( light_position, Color.of( 1,1,1,1 ), 1000000 ) ];
     }
 }
