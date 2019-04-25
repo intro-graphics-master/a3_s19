@@ -1,6 +1,6 @@
 import {tiny} from './tiny-graphics.js';
                                                   // Pull these names into this module's scope for convenience:
-const { Vec, Mat, Mat4, Color, Light, Shape, Material, Shader, Overridable, Scene } = tiny;
+const { Vec, Mat, Mat4, Color, Light, Shape, Material, Shader, Scene } = tiny;
 
 import {widgets} from './tiny-graphics-widgets.js';
 Object.assign( tiny, widgets );
@@ -28,7 +28,7 @@ class Triangle extends Shape
       this.indices        = [ 0, 1, 2 ];
                        // A position, normal, and texture coord fully describes one "vertex".  What's the "i"th vertex?  Simply
                        // the combined data you get if you look up index "i" of those lists above -- a position, normal vector,
-                       // and texture coordintae together.  Lastly we told it how to connect vertex entries into triangles.
+                       // and texture coordinate together.  Lastly we told it how to connect vertex entries into triangles.
                        // Every three indices in "this.indices" traces out one triangle.
     }
 }
