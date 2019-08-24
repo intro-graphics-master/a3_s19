@@ -1,72 +1,284 @@
 // tiny-graphics.js - A file that shows how to organize a complete graphics program.  It wraps common WebGL commands and math.
 // The file tiny-graphics-widgets.js additionally wraps web page interactions.  By Garett.
 
-                           // Store all our exports in a JS object.  We'll put each export in local scope as well as in here:
+                           // This file will consist of a number of class definitions that we will
+                           // export.  To organize the exports, we will both declare each class in
+                           // local scope (const) as well as store them in this JS object:
 export const tiny = {};
 
-const Vec = tiny.Vec =
-class Vec extends Float32Array       
-{                                   // **Vec** stores vectors of floating point numbers.  Puts vector math into JavaScript.
-                                    // Note:  Vecs should be created with of() due to wierdness with the TypedArray spec.
-                                    // Tip: Assign Vecs with .copy() to avoid referring two variables to the same Vec object.
-  // Example Usage:
-  //     equals: "Vec.of( 1,0,0 ).equals( Vec.of( 1,0,0 ) )" returns true.
-  //       plus: "Vec.of( 1,0,0 ).plus  ( Vec.of( 1,0,0 ) )" returns the Vec [ 2,0,0 ].
-  //      minus: "Vec.of( 1,0,0 ).minus ( Vec.of( 1,0,0 ) )" returns the Vec [ 0,0,0 ].
-  // mult-pairs: "Vec.of( 1,2,3 ).mult_pairs( Vec.of( 3,2,0 ) )" returns the Vec [ 3,4,0 ].
-  //      scale: "Vec.of( 1,2,3 ).scale( 2 )" overwrites the Vec with [ 2,4,6 ].
-  //      times: "Vec.of( 1,2,3 ).times( 2 )" returns the Vec [ 2,4,6 ].
-  // randomized: Returns this Vec plus a random vector of a given maximum length.
-  //        mix: "Vec.of( 0,2,4 ).mix( Vec.of( 10,10,10 ), .5 )" returns the Vec [ 5,6,7 ].
-  //       norm: "Vec.of( 1,2,3 ).norm()" returns the square root of 15.
-  // normalized: "Vec.of( 4,4,4 ).normalized()" returns the Vec [ sqrt(3), sqrt(3), sqrt(3) ]
-  //  normalize: "Vec.of( 4,4,4 ).normalize()" overwrites the Vec with [ sqrt(3), sqrt(3), sqrt(3) ].
-  //        dot: "Vec.of( 1,2,3 ).dot( Vec.of( 1,2,3 ) )" returns 15.
-  //       cast: "Vec.cast( [-1,-1,0], [1,-1,0], [-1,1,0] )" converts a list of Array literals into a list of Vecs.
-  //        to3: "Vec.of( 1,2,3,4 ).to3()" returns the Vec [ 1,2,3 ].  Use only on 4x1 Vecs to truncate them.
-  //        to4: "Vec.of( 1,2,3 ).to4( true or false )" returns the homogeneous Vec [ 1,2,3, 1 or 0 ].  Use only on 3x1.
-  //      cross: "Vec.of( 1,0,0 ).cross( Vec.of( 0,1,0 ) )" returns the Vec [ 0,0,1 ].  Use only on 3x1 Vecs.
-  //  to_string: "Vec.of( 1,2,3 ).to_string()" returns "[vec 1, 2, 3]"
+    // Organization of this file:  Math definitions, then graphics definitions.
 
-  copy        () { return Vec.from( this )                                }
-  equals     (b) { return this.every( (x,i) => x == b[i]                ) }
-  plus       (b) { return this.map(   (x,i) => x +  b[i]                ) }
-  minus      (b) { return this.map(   (x,i) => x -  b[i]                ) }
-  mult_pairs (b) { return this.map(   (x,i) => x *  b[i]                ) }
-  scale      (s) { this.forEach(  (x, i, a) => a[i] *= s                ) }
-  times      (s) { return this.map(       x => s*x                      ) }
-  randomized (s) { return this.map(       x => x + s*(Math.random()-.5) ) }
-  mix     (b, s) { return this.map(   (x,i) => (1-s)*x + s*b[i]         ) }
-  norm        () { return Math.sqrt( this.dot( this )                   ) }
-  normalized  () { return this.times( 1/this.norm()                     ) }
-  normalize   () {        this.scale( 1/this.norm()                     ) }
-  dot(b)                                     // Optimized arithmetic unrolls loops for array lengths less than 4.
-  { if( this.length == 3 ) return this[0]*b[0] + this[1]*b[1] + this[2]*b[2];
-    if( this.length == 4 ) return this[0]*b[0] + this[1]*b[1] + this[2]*b[2] + this[3]*b[3];
-    if( this.length >  4 ) return this.reduce( ( acc, x, i ) => { return acc + x*b[i]; }, 0 );
-    return this[0]*b[0] + this[1]*b[1];                           // Assume a minimum length of 2.
-  }                                       
-  static cast( ...args ) { return args.map( x => Vec.from(x) ); } // For avoiding repeatedly typing Vec.of in lists.
-  to3()          { return Vec.of( this[0], this[1], this[2]           ); }
-  to4( isPoint ) { return Vec.of( this[0], this[1], this[2], +isPoint ); }
-  cross(b) { return Vec.of( this[1]*b[2] - this[2]*b[1], this[2]*b[0] - this[0]*b[2], this[0]*b[1] - this[1]*b[0] ); }
-  to_string() { return "[vec " + this.join( ", " ) + "]" }
+    // Vector and Matrix algebra are not built into JavaScript at first.  We will add it now.
+
+    // You will be able to declare a 3D vector [x,y,z] supporting various common vector operations 
+    // with syntax:  vec(x,y), vec3( x,y,z ) or vec4( x,y,z, zero or one ).  For general sized vectors, use 
+    // class Vector and declare them with standard Array-supported operations like .of().
+
+    // For matrices, you will use class Mat4 to generate the 4 by 4 matrices that are common
+    // in graphics, or for general sized matrices you can use class Matrix.
+
+    // To get vector algebra that performs well in JavaScript, we based class Vector on consecutive 
+    // buffers (using type Float32Array).  Implementations should specialize for common vector 
+    // sizes 3 and 4 since JavaScript engines can better optimize functions when they can predict
+    // argument count.  Implementations should also avoid allocating new array objects since these
+    // will all have to be garbage collected.
+
+      // Examples:
+      
+  //  ** For size 3 **   
+  //     equals: "vec3( 1,0,0 ).equals( vec3( 1,0,0 ) )" returns true.
+  //       plus: "vec3( 1,0,0 ).plus  ( vec3( 1,0,0 ) )" returns the Vector [ 2,0,0 ].
+  //      minus: "vec3( 1,0,0 ).minus ( vec3( 1,0,0 ) )" returns the Vector [ 0,0,0 ].
+  // mult-pairs: "vec3( 1,2,3 ).mult_pairs( vec3( 3,2,0 ) )" returns the Vector [ 3,4,0 ].
+  //      scale: "vec3( 1,2,3 ).scale( 2 )" overwrites the Vector with [ 2,4,6 ].
+  //      times: "vec3( 1,2,3 ).times( 2 )" returns the Vector [ 2,4,6 ].
+  // randomized: Returns this Vector plus a random vector of a given maximum length.
+  //        mix: "vec3( 0,2,4 ).mix( vec3( 10,10,10 ), .5 )" returns the Vector [ 5,6,7 ].
+  //       norm: "vec3( 1,2,3 ).norm()" returns the square root of 15.
+  // normalized: "vec3( 4,4,4 ).normalized()" returns the Vector [ sqrt(3), sqrt(3), sqrt(3) ]
+  //  normalize: "vec3( 4,4,4 ).normalize()" overwrites the Vector with [ sqrt(3), sqrt(3), sqrt(3) ].
+  //        dot: "vec3( 1,2,3 ).dot( vec3( 1,2,3 ) )" returns 15.
+  //       cast: "vec3.cast( [-1,-1,0], [1,-1,0], [-1,1,0] )" converts a list of Array literals into a list of vec3's.
+  //        to4: "vec3( 1,2,3 ).to4( true or false )" returns the homogeneous vec4 [ 1,2,3, 1 or 0 ].
+  //      cross: "vec3( 1,0,0 ).cross( vec3( 0,1,0 ) )" returns the Vector [ 0,0,1 ].  Use only on 3x1 Vecs.
+  //  to_string: "vec3( 1,2,3 ).to_string()" returns "[vec3 1, 2, 3]"
+  //  ** For size 4, same except: **    
+  //        to3: "vec4( 4,3,2,1 ).to3()" returns the vec3 [ 4,3,2 ].  Use to truncate vec4 to vec3.
+  //  ** To assign by value **
+  //       copy: "let new_vector = old_vector.copy()" assigns by value so you get a different vector object.
+  //  ** For any size **
+  // to declare: Vector.of( 1,2,3,4,5,6,7,8,9,10 ) returns a Vector filled with those ten entries.
+  //  ** For multiplication by matrices **
+  //             "any_mat4.times( vec4( 1,2,3,0 ) )" premultiplies the homogeneous Vector [1,2,3]
+  //              by the 4x4 matrix and returns the new vec4.  Requires a vec4 as input.
+
+const Vector = tiny.Vector =
+class Vector extends Float32Array
+{                                   // **Vector** stores vectors of floating point numbers.  Puts vector math into JavaScript.
+                                    // Note:  Vectors should be created with of() due to wierdness with the TypedArray spec.
+                                    // Tip: Assign Vectors with .copy() to avoid referring two variables to the same Vector object.
+  static create( ...arr )
+    { return new Vector( arr );
+    }
+  copy() 
+    { return new Vector( this ) }
+  equals( b ) 
+    { return this.every( (x,i) => x == b[i] ) }
+  plus( b )
+    { return this.map(   (x,i) => x +  b[i] ) }
+  minus( b )
+    { return this.map(   (x,i) => x -  b[i] ) }
+  times_pairwise( b )
+    { return this.map(   (x,i) => x *  b[i] ) }
+  scale_by( s )
+    { this.forEach(  (x, i, a) => a[i] *= s ) }
+  times( s )
+    { return this.map(       x => s*x ) }
+  randomized( s )
+    { return this.map(       x => x + s*(Math.random()-.5) ) }
+  mix( b, s ) 
+    { return this.map(   (x,i) => (1-s)*x + s*b[i] ) }
+  norm()
+    { return Math.sqrt( this.dot( this ) ) }
+  normalized()
+    { return this.times( 1/this.norm() ) }
+  normalize()
+    {     this.scale_by( 1/this.norm() ) }
+  dot(b)
+    { if( this.length == 2 )                    // Optimize for Vectors of size 2
+        return this[0]*b[0] + this[1]*b[1];  
+      return this.reduce( ( acc, x, i ) => { return acc + x*b[i]; }, 0 );
+    }              
+  static cast( ...args )
+                            // cast(): For compact syntax when declaring lists.      
+    { return args.map( x => Vector.from(x) ) }
+                // to3() / to4() / cross():  For standardizing the API with Vector3/Vector4, so
+                // the performance hit of changing between these types can be measured.
+  to3()
+    { return vec3( this[0], this[1], this[2]              ); }
+  to4( is_a_point )
+    { return vec4( this[0], this[1], this[2], +is_a_point ); }
+  cross(b)
+    { return vec3( this[1]*b[2] - this[2]*b[1], this[2]*b[0] - this[0]*b[2], this[0]*b[1] - this[1]*b[0] ); }
+  to_string() { return "[vector " + this.join( ", " ) + "]" }
 }
 
-const Mat = tiny.Mat =
-class Mat extends Array                         
-{                                   // **Mat** M by N matrices of floats.  Enables matrix and vector math.
+
+const Vector3 = tiny.Vector3 =
+class Vector3 extends Float32Array
+{                                 // **Vector3** is a specialization of Vector only for size 3, for performance reasons.
+  static create( x, y, z )
+    { const v = new Vector3( 3 );
+      v[0] = x; v[1] = y; v[2] = z;
+      return v;
+    }
+  copy()
+    { return Vector3.from( this ) }
+                                              // In-fix operations: Use these for more readable math expressions.
+  equals( b )
+    { return this[0] == b[0] && this[1] == b[1] && this[2] == b[2] }
+  plus( b )
+    { return vec3( this[0]+b[0], this[1]+b[1], this[2]+b[2] ) }
+  minus( b )
+    { return vec3( this[0]-b[0], this[1]-b[1], this[2]-b[2] ) }
+  times( s )
+    { return vec3( this[0]*s,    this[1]*s,    this[2]*s    ) }
+  times_pairwise( b )
+    { return vec3( this[0]*b[0], this[1]*b[1], this[2]*b[2] ) }
+                                            // Pre-fix operations: Use these for better performance (to avoid new allocation).  
+  add_by( b )
+    { this[0] += b[0];  this[1] += b[1];  this[2] += b[2] }
+  subtract_by( b )
+    { this[0] -= b[0];  this[1] -= b[1];  this[2] -= b[2] }
+  scale_by( s )
+    { this[0] *= s;  this[1] *= s;  this[2] *= s }
+  scale_pairwise_by( b )
+    { this[0] *= b[0];  this[1] *= b[1];  this[2] *= b[2] }
+                                            // Other operations:  
+  randomized( s )
+    { return vec3( this[0]+s*(Math.random()-.5), 
+                   this[1]+s*(Math.random()-.5),
+                   this[2]+s*(Math.random()-.5) );
+    }
+  mix( b, s )
+    { return vec3( (1-s)*this[0] + s*b[0],
+                   (1-s)*this[1] + s*b[1],
+                   (1-s)*this[2] + s*b[2] );
+    }
+  norm()
+    { return Math.sqrt( this[0]*this[0] + this[1]*this[1] + this[2]*this[2] ) }
+  normalized()
+    { const d = 1/this.norm();
+      return vec3( this[0]*d, this[1]*d, this[2]*d );
+    }
+  normalize()
+    { const d = 1/this.norm();
+      this[0] *= d;  this[1] *= d;  this[2] *= d; 
+    }
+  dot( b )
+    { return this[0]*b[0] + this[1]*b[1] + this[2]*b[2] }
+  cross( b )
+    { return vec3( this[1]*b[2] - this[2]*b[1],
+                   this[2]*b[0] - this[0]*b[2],
+                   this[0]*b[1] - this[1]*b[0]  ) }
+  static cast( ...args )
+    {                             // cast(): Converts a bunch of arrays into a bunch of vec3's.
+      return args.map( x => Vector3.from( x ) );
+    }
+  static unsafe( x,y,z )
+    {                // unsafe(): returns vec3s only meant to be consumed immediately. Aliases into 
+                     // shared memory, to be overwritten upon next unsafe3 call.  Faster.
+      const shared_memory = vec3( 0,0,0 );
+      Vector3.unsafe = ( x,y,z ) =>
+        { shared_memory[0] = x;  shared_memory[1] = y;  shared_memory[2] = z;
+          return shared_memory;
+        }
+      return Vector3.unsafe( x,y,z );
+    }
+  to4( is_a_point )
+                    // to4():  Convert to a homogeneous vector of 4 values.
+    { return vec4( this[0], this[1], this[2], +is_a_point ) }
+  to_string()
+    { return "[vec3 " + this.join( ", " ) + "]" }
+}
+
+const Vector4 = tiny.Vector4 =
+class Vector4 extends Float32Array
+{                                 // **Vector4** is a specialization of Vector only for size 4, for performance reasons.
+                                  // The fourth coordinate value is homogenized (0 for a vector, 1 for a point).
+  static create( x, y, z, w )
+    { const v = new Vector4( 4 );
+      v[0] = x; v[1] = y; v[2] = z; v[3] = w;
+      return v;
+    }
+  copy()
+    { return Vector4.from( this ) }
+                                            // In-fix operations: Use these for more readable math expressions.
+  equals()
+    { return this[0] == b[0] && this[1] == b[1] && this[2] == b[2] && this[3] == b[3] }
+  plus( b )
+    { return vec4( this[0]+b[0], this[1]+b[1], this[2]+b[2], this[3]+b[3] ) }
+  minus( b )
+    { return vec4( this[0]-b[0], this[1]-b[1], this[2]-b[2], this[3]-b[3] ) }
+  times( s )
+    { return vec4( this[0]*s, this[1]*s, this[2]*s, this[3]*s ) }
+  times_pairwise( b )
+    { return vec4( this[0]*b[0], this[1]*b[1], this[2]*b[2], this[3]*b[3] ) }
+                                            // Pre-fix operations: Use these for better performance (to avoid new allocation).  
+  add_by( b )
+    { this[0] += b[0];  this[1] += b[1];  this[2] += b[2];  this[3] += b[3] }
+  subtract_by( b )
+    { this[0] -= b[0];  this[1] -= b[1];  this[2] -= b[2];  this[3] -= b[3] }
+  scale_by( s )
+    { this[0] *= s;  this[1] *= s;  this[2] *= s;  this[3] *= s }
+  scale_pairwise_by( b )
+    { this[0] *= b[0];  this[1] *= b[1];  this[2] *= b[2];  this[3] *= b[3] }
+                                            // Other operations:  
+  randomized( s )
+    { return vec4( this[0]+s*(Math.random()-.5), 
+                   this[1]+s*(Math.random()-.5),
+                   this[2]+s*(Math.random()-.5),
+                   this[3]+s*(Math.random()-.5) );
+    }
+  mix( b, s )
+    { return vec4( (1-s)*this[0] + s*b[0],
+                   (1-s)*this[1] + s*b[1],
+                   (1-s)*this[2] + s*b[2], 
+                   (1-s)*this[3] + s*b[3] );
+    }
+                // The norms should behave like for Vector3 because of the homogenous format.
+  norm()
+    { return Math.sqrt( this[0]*this[0] + this[1]*this[1] + this[2]*this[2] ) }
+  normalized()
+    { const d = 1/this.norm();
+      return vec4( this[0]*d, this[1]*d, this[2]*d, this[3] );    // (leaves the 4th coord alone)
+    }
+  normalize()
+    { const d = 1/this.norm();
+      this[0] *= d;  this[1] *= d;  this[2] *= d;                 // (leaves the 4th coord alone)
+    }
+  dot( b )
+    { return this[0]*b[0] + this[1]*b[1] + this[2]*b[2] + this[3]*b[3] }
+  static unsafe( x, y, z, w )
+    {                // **unsafe** Returns vec3s to be used immediately only. Aliases into 
+                     // shared memory to be overwritten on next unsafe3 call.  Faster.
+      const shared_memory = vec4( 0,0,0,0 );
+      Vec4.unsafe = ( x,y,z,w ) =>
+        { shared_memory[0] = x;  shared_memory[1] = y;
+          shared_memory[2] = z;  shared_memory[3] = w; }
+    }
+  to3()
+    { return vec3( this[0], this[1], this[2] ) }
+  to_string()
+    { return "[vec4 " + this.join( ", " ) + "]" }
+}
+
+const vec     = tiny.vec     = Vector .create;
+const vec3    = tiny.vec3    = Vector3.create;
+const vec4    = tiny.vec4    = Vector4.create;
+const unsafe3 = tiny.unsafe3 = Vector3.unsafe;
+const unsafe4 = tiny.unsafe4 = Vector4.unsafe;
+
+      // **Color** is just an alias for class Vector4.  Colors should be made as special 4x1
+      // vectors expressed as ( red, green, blue, opacity ) each ranging from 0 to 1.
+const color = tiny.color = Vector4.create;
+
+const Matrix = tiny.Matrix =
+class Matrix extends Array                         
+{                                   // **Matrix** holds M by N matrices of floats.  Enables matrix and vector math.
   // Example usage:
-  //  "Mat( rows )" returns a Mat with those rows, where rows is an array of float arrays.
-  //  "M.set_identity( m, n )" assigns the m by n identity matrix to Mat M.
+  //  "Matrix( rows )" returns a Matrix with those rows, where rows is an array of float arrays.
+  //  "M.set_identity( m, n )" assigns the m by n identity to Matrix M.
   //  "M.sub_block( start, end )" where start and end are each a [ row, column ] pair returns a sub-rectangle cut out from M.
   //  "M.copy()" creates a deep copy of M and returns it so you can modify it without affecting the original.
-  //  "M.equals(b)" as well as plus and minus work the same as for Vec but the two operands are Mats instead; b must be a Mat.
+  //  "M.equals(b)", "M.plus(b)", and "M.minus(b)" are operations betwen two matrices.
   //  "M.transposed()" returns a new matrix where all rows of M became columns and vice versa.
-  //  "M.times(b)" (where the post-multiplied b can be a scalar, a Vec, or another Mat) returns a new Mat or Vec holding the product.
-  //  "M.pre_multiply(b)"  overwrites the matrix M with the product of b * M where b must be another Mat.
-  //  "M.post_multiply(b)" overwrites the matrix M with the product of M * b where b can be a Mat, Vec, or scalar.
-  //  "Mat.flatten_2D_to_1D( M )" flattens input (a Mat or any array of Vecs or float arrays) into a row-major 1D array of raw floats.
+  //  "M.times(b)" (where the post-multiplied b can be a scalar, a Vector4, or another Matrix) returns a 
+  //               new Matrix or Vector4 holding the product.
+  //  "M.pre_multiply(b)"  overwrites the Matrix M with the product of b * M where b must be another Matrix.
+  //  "M.post_multiply(b)" overwrites the Matrix M with the product of M * b where b can be a Matrix or scalar.
+  //  "Matrix.flatten_2D_to_1D( M )" flattens input (a Matrix or any array of Vectors or float arrays)
+  //                                 into a row-major 1D array of raw floats.
   //  "M.to_string()" where M contains the 4x4 identity returns "[[1, 0, 0, 0] [0, 1, 0, 0] [0, 0, 1, 0] [0, 0, 0, 1]]".
 
   constructor( ...args )
@@ -84,24 +296,25 @@ class Mat extends Array
         if( i < n ) this[i][i] = 1; 
       }
     }
-  sub_block( start, end )  { return Mat.from( this.slice( start[0], end[0] ).map( r => r.slice( start[1], end[1] ) ) ); }
-  copy      () { return this.map(      r  => Vec.of ( ...r )                  ) }
+  sub_block( start, end )  { return Matrix.from( this.slice( start[0], end[0] ).map( r => r.slice( start[1], end[1] ) ) ); }
+  copy      () { return this.map(      r  => [ ...r ]                  ) }
   equals   (b) { return this.every( (r,i) => r.every( (x,j) => x == b[i][j] ) ) }
   plus     (b) { return this.map(   (r,i) => r.map  ( (x,j) => x +  b[i][j] ) ) }
   minus    (b) { return this.map(   (r,i) => r.map  ( (x,j) => x -  b[i][j] ) ) }
   transposed() { return this.map(   (r,i) => r.map  ( (x,j) =>   this[j][i] ) ) }
-  times    (b)                                                                       
+  times    (b, optional_preallocated_result)                                                                       
     { const len = b.length;
-      if( typeof len  === "undefined" ) return this.map( r => r.map( x => b*x ) );   // Mat * scalar case.
+      if( typeof len  === "undefined" ) return this.map( r => r.map( x => b*x ) );   // Matrix * scalar case.
       const len2 = b[0].length;    
       if( typeof len2 === "undefined" )
-      { let result = new Vec( this.length );                                         // Mat * Vec case.
+      { let result = optional_preallocated_result || new Vector4( this.length );     // Matrix * Vector4 case.
         for( let r=0; r < len; r++ ) result[r] = b.dot(this[r]);                      
         return result;
       }
-      let result = Mat.from( new Array( this.length ) );
-      for( let r = 0; r < this.length; r++ )                                         // Mat * Mat case.
-      { result[ r ] = new Array( len2 );
+      let result = optional_preallocated_result || Matrix.from( new Array( this.length ) );
+      for( let r = 0; r < this.length; r++ )                                         // Matrix * Matrix case.
+      { if( !optional_preallocated_result )
+          result[ r ] = new Array( len2 );
         for( let c = 0, sum = 0; c < len2; c++ )
         { result[ r ][ c ] = 0;
           for( let r2 = 0; r2 < len; r2++ )
@@ -122,37 +335,42 @@ class Mat extends Array
 
 
 const Mat4 = tiny.Mat4 =
-class Mat4 extends Mat
+class Mat4 extends Matrix
 {                                                   // **Mat4** generates special 4x4 matrices that are useful for graphics.
                                                     // All the methods below return a certain 4x4 matrix.
   static identity()
-    { return Mat.of( [ 1,0,0,0 ], [ 0,1,0,0 ], [ 0,0,1,0 ], [ 0,0,0,1 ] ); };
-  static rotation( angle, axis )
-    {                                               // rotation(): Requires a scalar (angle) and a 3x1 Vec (for axis)
-      let [ x, y, z ] = Vec.from( axis ).normalized(), 
-             [ c, s ] = [ Math.cos( angle ), Math.sin( angle ) ], omc = 1.0 - c;
-      return Mat.of( [ x*x*omc + c,   x*y*omc - z*s, x*z*omc + y*s, 0 ],
-                     [ x*y*omc + z*s, y*y*omc + c,   y*z*omc - x*s, 0 ],
-                     [ x*z*omc - y*s, y*z*omc + x*s, z*z*omc + c,   0 ],
-                     [ 0,             0,             0,             1 ] );
+    { return Matrix.of( [ 1,0,0,0 ], [ 0,1,0,0 ], [ 0,0,1,0 ], [ 0,0,0,1 ] ); };
+  static rotation( angle, x,y,z )
+    {                                               // rotation(): Requires a scalar (angle) and a three-component axis vector.
+      const normalize = ( x,y,z ) =>
+        { const n = Math.sqrt( x*x + y*y + z*z );
+          return [ x/n, y/n, z/n ]
+        }
+      let [ i, j, k ] = normalize( x,y,z ), 
+             [ c, s ] = [ Math.cos( angle ), Math.sin( angle ) ],
+                  omc = 1.0 - c;
+      return Matrix.of( [ i*i*omc + c,   i*j*omc - k*s, i*k*omc + j*s, 0 ],
+                        [ i*j*omc + k*s, j*j*omc + c,   j*k*omc - i*s, 0 ],
+                        [ i*k*omc - j*s, j*k*omc + i*s, k*k*omc + c,   0 ],
+                        [ 0,             0,             0,             1 ] );
     }
-  static scale( s )
-    {                                               // scale(): Requires a 3x1 Vec.
-      return Mat.of( [ s[0], 0,    0,    0 ],
-                     [ 0,    s[1], 0,    0 ],
-                     [ 0,    0,    s[2], 0 ],
-                     [ 0,    0,    0,    1 ] );
+  static scale( x,y,z )
+    {                                               // scale(): Builds and returns a scale matrix using x,y,z.
+      return Matrix.of( [ x, 0, 0, 0 ],
+                        [ 0, y, 0, 0 ],
+                        [ 0, 0, z, 0 ],
+                        [ 0, 0, 0, 1 ] );
     }
-  static translation( t ) 
-    {                                               // translation(): Requires a 3x1 Vec.
-      return Mat.of( [ 1, 0, 0, t[0] ],
-                     [ 0, 1, 0, t[1] ],
-                     [ 0, 0, 1, t[2] ],
-                     [ 0, 0, 0,   1  ] );
+  static translation( x,y,z ) 
+    {                                               // translation(): Builds and returns a translation matrix using x,y,z.
+      return Matrix.of( [ 1, 0, 0, x ],
+                        [ 0, 1, 0, y ],
+                        [ 0, 0, 1, z ],
+                        [ 0, 0, 0, 1 ] );
     }
   static look_at( eye, at, up )                      
     {                                   // look_at():  Produce a traditional graphics camera "lookat" matrix.
-                                        // Each input must be 3x1 Vec.
+                                        // Each input must be a 3x1 Vector.
                                         // Note:  look_at() assumes the result will be used for a camera and stores its
                                         // result in inverse space.  
                                         // If you want to use look_at to point a non-camera towards something, you can
@@ -167,23 +385,23 @@ class Mat4 extends Mat
                              // happens if eye == at, or if at minus eye is parallel to up.
       if( !x.every( i => i==i ) )                  
         throw "Two parallel vectors were given";
-      z.scale( -1 );                               // Enforce right-handed coordinate system.                                   
-      return Mat4.translation([ -x.dot( eye ), -y.dot( eye ), -z.dot( eye ) ])
-             .times( Mat.of( x.to4(0), y.to4(0), z.to4(0), Vec.of( 0,0,0,1 ) ) );
+      z.scale_by( -1 );                               // Enforce right-handed coordinate system.                                   
+      return Mat4.translation( -x.dot( eye ), -y.dot( eye ), -z.dot( eye ) )
+             .times( Matrix.of( x.to4(0), y.to4(0), z.to4(0), vec4( 0,0,0,1 ) ) );
     }
   static orthographic( left, right, bottom, top, near, far )
     {                                                          // orthographic(): Box-shaped view volume for projection.
-      return    Mat4.scale( Vec.of( 1/(right - left), 1/(top - bottom), 1/(far - near) ) )
-        .times( Mat4.translation( Vec.of( -left - right, -top - bottom, -near - far ) ) )
-        .times( Mat4.scale( Vec.of( 2, 2, -2 ) ) );
+      return    Mat4.scale( vec3( 1/(right - left), 1/(top - bottom), 1/(far - near) ) )
+        .times( Mat4.translation( vec3( -left - right, -top - bottom, -near - far ) ) )
+        .times( Mat4.scale( vec3( 2, 2, -2 ) ) );
     }
   static perspective( fov_y, aspect, near, far )
     {                                                         // perspective(): Frustum-shaped view volume for projection.
       const f = 1/Math.tan( fov_y/2 ), d = far - near;
-      return Mat.of( [ f/aspect, 0,               0,               0 ],
-                     [ 0,        f,               0,               0 ],
-                     [ 0,        0, -(near+far) / d, -2*near*far / d ],
-                     [ 0,        0,              -1,               0 ] );
+      return Matrix.of( [ f/aspect, 0,               0,               0 ],
+                        [ 0,        f,               0,               0 ],
+                        [ 0,        0, -(near+far) / d, -2*near*far / d ],
+                        [ 0,        0,              -1,               0 ] );
     }
   static inverse( m )              
     {                         // inverse(): A 4x4 inverse.  Computing it is slow because of 
@@ -271,32 +489,35 @@ class Graphics_Card_Object
                                         // a GPU draw command on a context it hasn't seen before.
   constructor() 
     { this.gpu_instances = new Map() }     // Track which GPU contexts this object has copied itself onto.
-  copy_onto_graphics_card( context, ...args )
-    {                           // copy_onto_graphics_card():  GPU-bound objects use this function by populating 
-                                // the "gpu instance" object returned here with whatever GPU pointers they need
-                                // to store (after they obtain them by performing WebGL calls).
-    
-                                // Don't let beginners call the expensive copy_onto_graphics_card function
-                                // too many times; beginner WebGL programs typically only need to call it 
-                                // a few times.  Use an "idiot alarm" to warn the user of this.
+  copy_onto_graphics_card( context, intial_gpu_representation )
+    {                           // copy_onto_graphics_card():  Our object might need to register to multiple 
+                                // GPU contexts in the case of multiple drawing areas.  If this is a new GPU
+                                // context for this object, copy the object to the GPU.  Otherwise, this 
+                                // object already has been copied over, so get a pointer to the existing 
+                                // instance.  The instance consists of whatever GPU pointers are associated
+                                // with this object, as returned by the WebGL calls that copied it to the 
+                                // GPU.  GPU-bound objects should override this function, which builds an 
+                                // initial instance, so as to populate it with finished pointers. 
       const existing_instance = this.gpu_instances.get( context );
-                                // Don't trigger the idiot alarm if the user is correctly re-using
+
+                                // Warn the user if they are avoidably making too many GPU objects.  Beginner
+                                // WebGL programs typically only need to call copy_onto_graphics_card once 
+                                // per object; doing it more is expensive, so warn them with an "idiot 
+                                // alarm". Don't trigger the idiot alarm if the user is correctly re-using
                                 // an existing GPU context and merely overwriting parts of itself.
       if( !existing_instance )
-        this.check_idiot_alarm( ...args );
-                                              // Check if this object already exists on that GPU context.
+        { Graphics_Card_Object.idiot_alarm |= 0;     // Start a program-wide counter.
+          if( Graphics_Card_Object.idiot_alarm++ > 200 )
+            throw `Error: You are sending a lot of object definitions to the GPU, probably by mistake!  Many of them are likely duplicates, which you
+                   don't want since sending each one is very slow.  To avoid this, from your display() function avoid ever declaring a Shape Shader
+                   or Texture (or subclass of these) with "new", thus causing the definition to be re-created and re-transmitted every frame.  
+                   Instead, call these in your scene's constructor and keep the result as a class member, or otherwise make sure it only happens 
+                   once.  In the off chance that you have a somehow deformable shape that MUST change every frame, then at least use the special
+                   arguments of copy_onto_graphics_card to limit which buffers get overwritten every frame to only the necessary ones.`;
+        }
+                                                // Check if this object already exists on that GPU context.
       return existing_instance ||             // If necessary, start a new object associated with the context.
-             this.gpu_instances.set( context, this.make_gpu_representation() ).get( context );
-    }
-  check_idiot_alarm( args )                      // Warn the user if they are avoidably making too many GPU objects.
-    { Graphics_Card_Object.idiot_alarm |= 0;     // Start a program-wide counter.
-      if( Graphics_Card_Object.idiot_alarm++ > 200 )
-        throw `Error: You are sending a lot of object definitions to the GPU, probably by mistake!  Many of them are likely duplicates, which you
-               don't want since sending each one is very slow.  To avoid this, from your display() function avoid ever declaring a Shape Shader
-               or Texture (or subclass of these) with "new", thus causing the definition to be re-created and re-transmitted every frame.  
-               Instead, call these in your scene's constructor and keep the result as a class member, or otherwise make sure it only happens 
-               once.  In the off chance that you have a somehow deformable shape that MUST change every frame, then at least use the special
-               arguments of copy_onto_graphics_card to limit which buffers get overwritten every frame to only the necessary ones.`;
+             this.gpu_instances.set( context, intial_gpu_representation ).get( context );
     }
   activate( context, ...args )
     {                            // activate():  To use, super call it to retrieve a container of GPU 
@@ -304,7 +525,6 @@ class Graphics_Card_Object
                                  // Then do any WebGL calls you need that require GPU pointers.
       return this.gpu_instances.get( context ) || this.copy_onto_graphics_card( context, ...args )
     }
-  make_gpu_representation() {}           // Override this in your subclass, defining a blank container of GPU references for itself.
 }
 
 
@@ -330,29 +550,39 @@ class Vertex_Buffer extends Graphics_Card_Object
                 // their own buffers within any of your existing graphics card contexts.  Optional arguments 
                 // allow calling this again to overwrite the GPU buffers related to this shape's arrays, or 
                 // subsets of them as needed (if only some fields of your shape have changed).
-      const gpu_instance = super.copy_onto_graphics_card( context, selection_of_arrays, write_to_indices );
+
+                // Define what this object should store in each new WebGL Context:
+      const initial_gpu_representation = { webGL_buffer_pointers: {} };
+                                // Our object might need to register to multiple GPU contexts in the case of 
+                                // multiple drawing areas.  If this is a new GPU context for this object, 
+                                // copy the object to the GPU.  Otherwise, this object already has been 
+                                // copied over, so get a pointer to the existing instance.
+      const did_exist = this.gpu_instances.get( context );
+      const gpu_instance = super.copy_onto_graphics_card( context, initial_gpu_representation );
 
       const gl = context;
+
+      const write = did_exist ? ( target, data ) => gl.bufferSubData( target, 0, data )
+                              : ( target, data ) => gl.bufferData( target, data, gl.STATIC_DRAW );
+
       for( let name of selection_of_arrays )
-        { const buffer = gpu_instance.webGL_buffer_pointers[ name ] = gl.createBuffer();
-          gl.bindBuffer( gl.ARRAY_BUFFER, buffer );
-          gl.bufferData( gl.ARRAY_BUFFER, Mat.flatten_2D_to_1D( this.arrays[ name ] ), gl.STATIC_DRAW );
+        { if( !did_exist )
+            gpu_instance.webGL_buffer_pointers[ name ] = gl.createBuffer();
+          gl.bindBuffer( gl.ARRAY_BUFFER, gpu_instance.webGL_buffer_pointers[ name ] );
+          write( gl.ARRAY_BUFFER, Matrix.flatten_2D_to_1D( this.arrays[ name ] ) );
         }
       if( this.indices.length && write_to_indices )
-      { this.index_buffer = gl.createBuffer();
-        gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, this.index_buffer );
-        gl.bufferData( gl.ELEMENT_ARRAY_BUFFER, new Uint32Array( this.indices ), gl.STATIC_DRAW );
-      }
+        { if( !did_exist )
+            gpu_instance.index_buffer = gl.createBuffer();
+          gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, gpu_instance.index_buffer );
+          write( gl.ELEMENT_ARRAY_BUFFER, new Uint32Array( this.indices ) );
+        }
       return gpu_instance;
     }
-  make_gpu_representation()
-    {             // make_gpu_representation: Tell the base Graphics_Card_Object what to store for each WebGL Context.
-      return { webGL_buffer_pointers: {} }
-    }
-  execute_shaders( gl, type )     // execute_shaders(): Draws this shape's entire vertex buffer.
+  execute_shaders( gl, gpu_instance, type )     // execute_shaders(): Draws this shape's entire vertex buffer.
     {       // Draw shapes using indices if they exist.  Otherwise, assume the vertices are arranged as triples.
       if( this.indices.length )
-      { gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, this.index_buffer );
+      { gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, gpu_instance.index_buffer );
         gl.drawElements( gl[type], this.indices.length, gl.UNSIGNED_INT, 0 ) 
       }
       else  gl.drawArrays( gl[type], 0, Object.values( this.arrays )[0].length );
@@ -364,7 +594,7 @@ class Vertex_Buffer extends Graphics_Card_Object
       const gpu_instance = this.activate( webgl_manager.context );
       material.shader.activate( webgl_manager.context, gpu_instance.webGL_buffer_pointers, program_state, model_transform, material );
                                                               // Run the shaders to draw every triangle now:
-      this.execute_shaders( webgl_manager.context, type );
+      this.execute_shaders( webgl_manager.context, gpu_instance, type );
     }
 }
 
@@ -379,7 +609,7 @@ class Shape extends Vertex_Buffer
             // adding the basic assumption that each vertex will have a 3D position and a 3D normal vector as available 
             // fields to look up.  This means there will be at least two arrays for the user to fill in:  "positions" 
             // enumerating all the vertices' locations, and "normals" enumerating all vertices' normal vectors pointing 
-            // away from the surface.  Both are of type Vec of length 3.
+            // away from the surface.  Both are of type Vector3.
 
             // By including  these, Shape adds to class Vertex_Buffer the ability to compound shapes in together into a 
             // single performance-friendly Vertex_Buffer, placing this shape into a larger one at a custom transforms by
@@ -423,58 +653,59 @@ class Shape extends Vertex_Buffer
     {                                     // make_flat_shaded_version(): Auto-generate a new class that re-uses any
                                           // Shape's points, but with new normals generated from flat shading.
       return class extends this.constructor
-      { constructor( ...args ) { super( ...args );  this.duplicate_the_shared_vertices();  this.flat_shade(); }
-        duplicate_the_shared_vertices()
-          {                   // (Internal helper function)
-                              //  Prepare an indexed shape for flat shading if it is not ready -- that is, if there are any
-                              // edges where the same vertices are indexed by both the adjacent triangles, and those two 
-                              // triangles are not co-planar.  The two would therefore fight over assigning different normal 
-                              // vectors to the shared vertices.
-            const arrays = {};
-            for( let arr in this.arrays ) arrays[ arr ] = [];
-            for( let index of this.indices )
-              for( let arr in this.arrays )
-                arrays[ arr ].push( this.arrays[ arr ][ index ] );      // Make re-arranged versions of each data field, with
-            Object.assign( this.arrays, arrays );                       // copied values every time an index was formerly re-used.
-            this.indices = this.indices.map( (x,i) => i );    // Without shared vertices, we can use sequential numbering.
-          }
-        flat_shade()           
-          {                    // (Internal helper function)
-                               // Automatically assign the correct normals to each triangular element to achieve flat shading.
-                               // Affect all recently added triangles (those past "offset" in the list).  Assumes that no
-                               // vertices are shared across seams.   First, iterate through the index or position triples:
-            this.indices.length = false;   
-            for( let counter = 0; counter < (this.indices.length ? this.indices.length : this.arrays.position.length); counter += 3 )
-            { const indices = this.indices.length ? [ this.indices[ counter ], this.indices[ counter + 1 ], this.indices[ counter + 2 ] ]
-                                                  : [ counter, counter + 1, counter + 2 ];
-              const [ p1, p2, p3 ] = indices.map( i => this.arrays.position[ i ] );
-                                              // Cross the two edge vectors of this triangle together to get its normal:
-              const n1 = p1.minus(p2).cross( p3.minus(p1) ).normalized();  
-                                              // Flip the normal if adding it to the triangle brings it closer to the origin:
-              if( n1.times(.1).plus(p1).norm() < p1.norm() ) n1.scale(-1);
-                                              // Propagate this normal to the 3 vertices:
-              for( let i of indices ) this.arrays.normal[ i ] = Vec.from( n1 );
-            }
-          }
+      { constructor( ...args )
+          { super( ...args );  this.duplicate_the_shared_vertices();  this.flat_shade(); }        
+      }
+    }
+  duplicate_the_shared_vertices()
+    {                   // (Internal helper function)
+                        //  Prepare an indexed shape for flat shading if it is not ready -- that is, if there are any
+                        // edges where the same vertices are indexed by both the adjacent triangles, and those two 
+                        // triangles are not co-planar.  The two would therefore fight over assigning different normal 
+                        // vectors to the shared vertices.
+      const arrays = {};
+      for( let arr in this.arrays ) arrays[ arr ] = [];
+      for( let index of this.indices )
+        for( let arr in this.arrays )
+          arrays[ arr ].push( this.arrays[ arr ][ index ] );      // Make re-arranged versions of each data field, with
+      Object.assign( this.arrays, arrays );                       // copied values every time an index was formerly re-used.
+      this.indices = this.indices.map( (x,i) => i );    // Without shared vertices, we can use sequential numbering.
+    }
+  flat_shade()           
+    {                    // (Internal helper function)
+                         // Automatically assign the correct normals to each triangular element to achieve flat shading.
+                         // Affect all recently added triangles (those past "offset" in the list).  Assumes that no
+                         // vertices are shared across seams.   First, iterate through the index or position triples:
+      for( let counter = 0; counter < (this.indices ? this.indices.length : this.arrays.position.length); counter += 3 )
+      { const indices = this.indices.length ? [ this.indices[ counter ], this.indices[ counter + 1 ], this.indices[ counter + 2 ] ]
+                                            : [ counter, counter + 1, counter + 2 ];
+        const [ p1, p2, p3 ] = indices.map( i => this.arrays.position[ i ] );
+                                        // Cross the two edge vectors of this triangle together to get its normal:
+        const n1 = p1.minus(p2).cross( p3.minus(p1) ).normalized();  
+                                        // Flip the normal if adding it to the triangle brings it closer to the origin:
+        if( n1.times(.1).plus(p1).norm() < p1.norm() ) n1.scale_by(-1);
+                                        // Propagate this normal to the 3 vertices:
+        for( let i of indices ) this.arrays.normal[ i ] = Vector3.from( n1 );
       }
     }
   normalize_positions( keep_aspect_ratios = true )
     { let p_arr = this.arrays.position;
-      const average_position = p_arr.reduce( (acc,p) => acc.plus( p.times( 1/p_arr.length ) ), Vec.of( 0,0,0 ) );
+      const average_position = p_arr.reduce( (acc,p) => acc.plus( p.times( 1/p_arr.length ) ), vec3( 0,0,0 ) );
       p_arr = p_arr.map( p => p.minus( average_position ) );           // Center the point cloud on the origin.
       const average_lengths  = p_arr.reduce( (acc,p) => 
-                                         acc.plus( p.map( x => Math.abs(x) ).times( 1/p_arr.length ) ), Vec.of( 0,0,0 ) );
+                                         acc.plus( p.map( x => Math.abs(x) ).times( 1/p_arr.length ) ), vec3( 0,0,0 ) );
       if( keep_aspect_ratios )                            // Divide each axis by its average distance from the origin.
-        this.arrays.position = p_arr.map( p => p.map( (x,i) => x/average_lengths[i] ) );    
+        this.arrays.position = p_arr.map( p => p.map( (x,i) => x/average_lengths[i] ) );
       else
         this.arrays.position = p_arr.map( p => p.times( 1/average_lengths.norm() ) );
     }
 }
 
+
 const Light = tiny.Light =
 class Light
 {                         // **Light** stores the properties of one light in a scene.  Contains a coordinate and a
-                          // color (each are 4x1 Vecs) as well as one size scalar.
+                          // color (each are 4x1 Vectors) as well as one size scalar.
                           // The coordinate is homogeneous, and so is either a point or a vector.  Use w=0 for a
                           // vector (directional) light, and w=1 for a point light / spotlight.
                           // For spotlights, a light also needs a "size" factor for how quickly the brightness
@@ -482,10 +713,6 @@ class Light
   constructor( position, color, size ) { Object.assign( this, { position, color, attenuation: 1/size } ); }
 }
 
-const Color = tiny.Color =
-class Color extends Vec
-{    // **Color** is just an alias for class Vec.  Colors should be made as special 4x1
-}    // vectors expressed as ( red, green, blue, opacity ) each ranging from 0 to 1.
 
 const Graphics_Addresses = tiny.Graphics_Addresses =
 class Graphics_Addresses
@@ -570,34 +797,42 @@ class Shader extends Graphics_Card_Object
   copy_onto_graphics_card( context )
     {                                     // copy_onto_graphics_card():  Called automatically as needed to load the 
                                           // shader program onto one of your GPU contexts for its first time.
-      const gpu_instance = super.copy_onto_graphics_card( context ),
-                 program = gpu_instance.program || context.createProgram();
 
-      const gl     = context;
-      const shared = this.shared_glsl_code() || "";
+                // Define what this object should store in each new WebGL Context:
+      const initial_gpu_representation = { program: undefined, gpu_addresses: undefined,
+                                          vertShdr: undefined,      fragShdr: undefined };
+                                // Our object might need to register to multiple GPU contexts in the case of 
+                                // multiple drawing areas.  If this is a new GPU context for this object, 
+                                // copy the object to the GPU.  Otherwise, this object already has been 
+                                // copied over, so get a pointer to the existing instance.
+      const gpu_instance = super.copy_onto_graphics_card( context, initial_gpu_representation );
       
-      const vertShdr = gl.createShader( gl.VERTEX_SHADER );
-      gl.shaderSource( vertShdr, shared + this.vertex_glsl_code() );
-      gl.compileShader( vertShdr );
-      if( !gl.getShaderParameter(vertShdr, gl.COMPILE_STATUS) ) throw "Vertex shader compile error: "   + gl.getShaderInfoLog( vertShdr );
+      const gl = context;
+      const program  = gpu_instance.program  || context.createProgram();
+      const vertShdr = gpu_instance.vertShdr || gl.createShader( gl.VERTEX_SHADER );
+      const fragShdr = gpu_instance.fragShdr || gl.createShader( gl.FRAGMENT_SHADER );
+      
+      if( gpu_instance.vertShdr ) gl.detachShader( program, vertShdr );
+      if( gpu_instance.fragShdr ) gl.detachShader( program, fragShdr );
 
-      const fragShdr = gl.createShader( gl.FRAGMENT_SHADER );
-      gl.shaderSource( fragShdr, shared + this.fragment_glsl_code() );
+      gl.shaderSource( vertShdr, this.vertex_glsl_code() );
+      gl.compileShader( vertShdr );
+      if( !gl.getShaderParameter(vertShdr, gl.COMPILE_STATUS) )
+        throw "Vertex shader compile error: "   + gl.getShaderInfoLog( vertShdr );
+
+      gl.shaderSource( fragShdr, this.fragment_glsl_code() );
       gl.compileShader( fragShdr );
-      if( !gl.getShaderParameter(fragShdr, gl.COMPILE_STATUS) ) throw "Fragment shader compile error: " + gl.getShaderInfoLog( fragShdr );
+      if( !gl.getShaderParameter(fragShdr, gl.COMPILE_STATUS) )
+        throw "Fragment shader compile error: " + gl.getShaderInfoLog( fragShdr );
 
       gl.attachShader( program, vertShdr );
       gl.attachShader( program, fragShdr );
       gl.linkProgram(  program );
-      if( !gl.getProgramParameter( program, gl.LINK_STATUS) ) throw "Shader linker error: "           + gl.getProgramInfoLog( this.program );
+      if( !gl.getProgramParameter( program, gl.LINK_STATUS) )
+        throw "Shader linker error: "           + gl.getProgramInfoLog( this.program );
 
-      if( !gpu_instance.program )
-        Object.assign( gpu_instance, { program, gpu_addresses: new Graphics_Addresses( program, gl ) } );
+      Object.assign( gpu_instance, { program, vertShdr, fragShdr, gpu_addresses: new Graphics_Addresses( program, gl ) } );
       return gpu_instance;
-    }
-  make_gpu_representation() 
-    {             // make_gpu_representation: Tell the base Graphics_Card_Object what to store for each WebGL Context.
-      return { program: undefined, gpu_addresses: undefined }
     }
   activate( context, buffer_pointers, program_state, model_transform, material )
     {                                     // activate(): Selects this Shader in GPU memory so the next shape draws using it.        
@@ -620,10 +855,9 @@ class Shader extends Graphics_Card_Object
                                 attribute.normalized, attribute.stride, attribute.pointer );       // from the active buffer.
       }
     }                           // Your custom Shader has to override the following functions:    
-    vertex_glsl_code(){}
-    fragment_glsl_code(){}
-    shared_glsl_code(){}
-    update_GPU(){}
+  vertex_glsl_code(){}
+  fragment_glsl_code(){}
+  update_GPU(){}
 
         // *** How those four functions work (and how GPU shader programs work in general):
           
@@ -664,8 +898,6 @@ class Shader extends Graphics_Card_Object
                              // new triangle is closer to the camera, and even if so, blending settings may interpolate some 
                              // of the old color into the result.  Finally, an image is displayed onscreen.
 
-                             // The "shared_glsl_code" string defined above is appended to the beginning of both shaders.
-
                              // You must define an update_GPU() function that includes the extra custom JavaScript code 
                              // needed to populate your particular shader program with all the data values it is expecting.
 }
@@ -689,7 +921,15 @@ class Texture extends Graphics_Card_Object
   copy_onto_graphics_card( context, need_initial_settings = true )
     {                                     // copy_onto_graphics_card():  Called automatically as needed to load the 
                                           // texture image onto one of your GPU contexts for its first time.
-       const gpu_instance = super.copy_onto_graphics_card( context );
+      
+                // Define what this object should store in each new WebGL Context:
+      const initial_gpu_representation = { texture_buffer_pointer: undefined };
+                                // Our object might need to register to multiple GPU contexts in the case of 
+                                // multiple drawing areas.  If this is a new GPU context for this object, 
+                                // copy the object to the GPU.  Otherwise, this object already has been 
+                                // copied over, so get a pointer to the existing instance.
+      const gpu_instance = super.copy_onto_graphics_card( context, initial_gpu_representation );
+
       if( !gpu_instance.texture_buffer_pointer ) gpu_instance.texture_buffer_pointer = context.createTexture();
 
       const gl = context;
@@ -705,10 +945,6 @@ class Texture extends Graphics_Card_Object
       if( this.min_filter = "LINEAR_MIPMAP_LINEAR" )      // If the user picked tri-linear sampling (the default) then generate
         gl.generateMipmap(gl.TEXTURE_2D);                 // the necessary "mips" of the texture and store them on the GPU with it.
       return gpu_instance;
-    }
-  make_gpu_representation()
-    {              // make_gpu_representation: Tell the base Graphics_Card_Object what to store for each WebGL Context.
-       return { texture_buffer_pointer: undefined }
     }
   activate( context, texture_unit = 0 )
     {                                     // activate(): Selects this Texture in GPU memory so the next shape draws using it.

@@ -1,8 +1,7 @@
 // This file defines a lot of panels that can be placed on websites to create interactive graphics programs that use tiny-graphics.js.
 
 import {tiny} from './tiny-graphics.js';
-                                                               // Pull these names into this module's scope for convenience.
-const { Vec, Mat, Mat4, Color, Shape, Shader, Scene } = tiny;
+const { color, Scene } = tiny;           // Pull these names into this module's scope for convenience.
 
 export const widgets = {};
 
@@ -13,44 +12,69 @@ class Canvas_Widget
                             // arguments.  Optionally spawns a Text_Widget and Controls_Widget for showing more information
                             // or interactive UI buttons, divided into one panel per each loaded Scene.  You can use up to
                             // 16 Canvas_Widgets; browsers support up to 16 WebGL contexts per page.
-  constructor( element, initial_scenes, options )   
+  constructor( element, initial_scenes, options = {} )   
     { this.element = element;
-      Object.assign( this, { show_controls: true, show_explanation: true }, options )
+
+      const defaults = { show_canvas: true, make_controls: true, show_explanation: true, 
+                         make_editor: false, make_code_nav: true };
+      if( initial_scenes && initial_scenes[0] )
+        Object.assign( options, initial_scenes[0].widget_options );
+      Object.assign( this, defaults, options )
+      
       const rules = [ ".canvas-widget { width: 1080px; background: DimGray; margin:auto }",
                       ".canvas-widget canvas { width: 1080px; height: 600px; margin-bottom:-3px }" ];
                       
       if( document.styleSheets.length == 0 ) document.head.appendChild( document.createElement( "style" ) );
       for( const r of rules ) document.styleSheets[document.styleSheets.length - 1].insertRule( r, 0 )
 
-      this.embedded_explanation_area = this.element.appendChild( document.createElement( "div" ) );
-      this.embedded_explanation_area.className = "text-widget";
-      
+                              // Fill in the document elements:
+      if( this.show_explanation )
+      { this.embedded_explanation_area = this.element.appendChild( document.createElement( "div" ) );
+        this.embedded_explanation_area.className = "text-widget";
+      }
+
       const canvas = this.element.appendChild( document.createElement( "canvas" ) );
 
-      this.patch_ios_bug();
-      this.webgl_manager = new tiny.Webgl_Manager( canvas, Color.of( 0,0,0,1 ) );  // Second parameter sets background color.
+      if( this.make_controls )
+      { this.embedded_controls_area    = this.element.appendChild( document.createElement( "div" ) );
+        this.embedded_controls_area.className = "controls-widget";
+      }
 
-      this.embedded_controls_area = this.element.appendChild( document.createElement( "div" ) );
-      this.embedded_controls_area.className = "controls-widget";
+      if( this.make_code_nav )
+      { this.embedded_code_nav_area    = this.element.appendChild( document.createElement( "div" ) );
+        this.embedded_code_nav_area.className = "code-widget";
+      }
 
+      if( this.make_editor )
+      { this.embedded_editor_area      = this.element.appendChild( document.createElement( "div" ) );
+        this.embedded_editor_area.className = "editor-widget";
+      }
+
+      if( !this.show_canvas )
+        canvas.style.display = "none";
+
+      this.webgl_manager = new tiny.Webgl_Manager( canvas, color( 0,0,0,1 ) );  // Second parameter sets background color.
+
+
+                           // Add scenes and child widgets
       if( initial_scenes )
         this.webgl_manager.scenes.push( ...initial_scenes );
 
-      this.embedded_controls = new Controls_Widget( this.embedded_controls_area,    this.webgl_manager.scenes );
-      this.embedded_explanation  = new Text_Widget( this.embedded_explanation_area, this.webgl_manager.scenes, this.webgl_manager );
+      const primary_scene = initial_scenes ? initial_scenes[0] : undefined;
+      const additional_scenes = initial_scenes ? initial_scenes.slice(1) : [];
+      const primary_scene_definiton = primary_scene ? primary_scene.constructor : undefined;
+      if( this.show_explanation )
+        this.embedded_explanation  = new Text_Widget( this.embedded_explanation_area, this.webgl_manager.scenes, this.webgl_manager );
+      if( this.make_controls )
+        this.embedded_controls     = new Controls_Widget( this.embedded_controls_area, this.webgl_manager.scenes );
+      if( this.make_editor )
+        this.embedded_editor       = new Editor_Widget( this.embedded_editor_area, primary_scene_definiton, this );
+      if( this.make_code_nav )
+        this.embedded_code_nav     = new Code_Widget( this.embedded_code_nav_area, primary_scene_definiton, 
+                                     additional_scenes, { associated_editor: this.embedded_editor } );
 
                                        // Start WebGL initialization.  Note that render() will re-queue itself for continuous calls.
       this.webgl_manager.render();
-    }
-  patch_ios_bug()
-    {                                           // patch_ios_bug():  Correct a flaw in Webkit (iPhone devices; safari mobile) that
-                                                // breaks TypedArray.from() and TypedArray.of() in subclasses.  Bug report:
-                                                // https://bugs.webkit.org/show_bug.cgi?id=181011
-      try{ Vec.of( 1,2,3 ).times(2) }
-      catch 
-      { Vec.of   = function( ...arr ) { return new Vec( Array.from( ...arr ) ) }
-        Vec.from = function(    arr ) { return new Vec( Array.from(    arr ) ) }
-      }
     }
 }
 
@@ -121,12 +145,12 @@ class Controls_Widget
       }
     }
   render( time = 0 )
-    {                                                   // Traverse all scenes and their children, recursively:
+    {                       // Check to see if we need to re-create the panels due to any scene being new.                      
+                            // Traverse all scenes and their children, recursively:
       const open_list = [ ...this.scenes ];
       while( open_list.length )                       
       { open_list.push( ...open_list[0].children );
         const scene = open_list.shift();
-                                        // Check to see if we need to re-create the panels due to any scene being new.
         if( !scene.timestamp || scene.timestamp > this.timestamp )        
         { this.make_panels( time );
           break;
@@ -182,25 +206,44 @@ class Code_Manager
 const Code_Widget = widgets.Code_Widget =
 class Code_Widget
 {                                         // **Code_Widget** draws a code navigator panel with inline links to the entire program source code.
-  constructor( element, main_scene, additional_scenes, definitions )
+  constructor( element, main_scene, additional_scenes, options = {} )
     { const rules = [ ".code-widget .code-panel { margin:auto; background:white; overflow:auto; font-family:monospace; width:1060px; padding:10px; padding-bottom:40px; max-height: 500px; \
                                                       border-radius:12px; box-shadow: 20px 20px 90px 0px powderblue inset, 5px 5px 30px 0px blue inset }",
-                    ".code-widget .code-display { min-width:1800px; padding:10px; white-space:pre-wrap; background:transparent }",
+                    ".code-widget .code-display { min-width:1200px; padding:10px; white-space:pre-wrap; background:transparent }",
                     ".code-widget table { display:block; margin:auto; overflow-x:auto; width:1080px; border-radius:25px; border-collapse:collapse; border: 2px solid black }",
                     ".code-widget table.class-list td { border-width:thin; background: #EEEEEE; padding:12px; font-family:monospace; border: 1px solid black }"
                      ];
 
       if( document.styleSheets.length == 0 ) document.head.appendChild( document.createElement( "style" ) );
       for( const r of rules ) document.styleSheets[document.styleSheets.length - 1].insertRule( r, 0 )
-      
+
+      this.associated_editor_widget = options.associated_editor;
+
+      if( !main_scene )
+        return;
+
+      import( './main-scene.js' )
+        .then( module => { 
+        
+          this.build_reader(      element, main_scene, additional_scenes, module.defs );
+          if( !options.hide_navigator )
+            this.build_navigator( element, main_scene, additional_scenes, module.defs );
+        } )
+    }
+  build_reader( element, main_scene, additional_scenes, definitions )
+    {                                           // (Internal helper function)      
       this.definitions = definitions;
       const code_panel = element.appendChild( document.createElement( "div" ) );
       code_panel.className = "code-panel";
-      const text        = code_panel.appendChild( document.createElement( "p" ) );
-      text.textContent  = "Below is the code for the demo that's running.  Click links to see definitions!";
+//       const text        = code_panel.appendChild( document.createElement( "p" ) );
+//       text.textContent  = "Code for the above scene:";
       this.code_display = code_panel.appendChild( document.createElement( "div" ) );
       this.code_display.className = "code-display";
-
+                                                                            // Default textbox contents:
+      this.display_code( main_scene );
+    }
+  build_navigator( element, main_scene, additional_scenes, definitions )
+    {                                           // (Internal helper function)
       const class_list = element.appendChild( document.createElement( "table" ) );
       class_list.className = "class-list";   
       const top_cell = class_list.insertRow( -1 ).insertCell( -1 );
@@ -226,8 +269,7 @@ class Code_Widget
       third_row.style = "text-align:center";
       third_row.innerHTML = "<td><b>tiny-graphics.js</b><br>(Always the same)</td> \
                              <td><b>All other class definitions from dependencies:</td>";
-                                                                            // Default textbox contents:
-      this.display_code( main_scene );
+
       const fourth_row = class_list.insertRow( -1 );
                                                                             // Generate the navigator table of links:
       for( let list of [ tiny, definitions ] )
@@ -248,7 +290,8 @@ class Code_Widget
   display_code( class_to_display )
     {                                           // display_code():  Populate the code textbox.
                                                 // Pass undefined to choose index.html source.
-      this.selected_class = class_to_display;
+      if( this.associated_editor_widget ) 
+        this.associated_editor_widget.select_class( class_to_display );
       if( class_to_display ) this.format_code( class_to_display.toString() );
       else fetch( document.location.href )
                 .then(   response => response.text() )
@@ -275,13 +318,104 @@ class Code_Widget
     }
 }
 
+
+const Editor_Widget = widgets.Editor_Widget =
+class Editor_Widget
+{ constructor( element, initially_selected_class, canvas_widget, options = {} )
+    { let rules = [ ".editor-widget { margin:auto; background:white; overflow:auto; font-family:monospace; width:1060px; padding:10px; \
+                                      border-radius:12px; box-shadow: 20px 20px 90px 0px powderblue inset, 5px 5px 30px 0px blue inset }",
+                    ".editor-widget button { background: #4C9F50; color: white; padding: 6px; border-radius:9px; margin-right:5px; \
+                                             box-shadow: 4px 6px 16px 0px rgba(0,0,0,0.3); transition: background .3s, transform .3s }",
+                    ".editor-widget input { margin-right:5px }",
+                    ".editor-widget textarea { white-space:pre; width:1040px; margin-bottom:30px }",
+                    ".editor-widget button:hover, button:focus { transform: scale(1.3); color:gold }"
+                  ];
+
+      for( const r of rules ) document.styleSheets[0].insertRule( r, 1 );
+
+      this.associated_canvas = canvas_widget;
+      this.options = options;
+
+      const form = this.form = element.appendChild( document.createElement( "form" ) );
+                                                          // Don't refresh the page on submit:
+      form.addEventListener( 'submit', event => 
+        { event.preventDefault(); this.submit_demo() }, false );    
+
+      const explanation = form.appendChild( document.createElement( "p" ) );
+      explanation.innerHTML = `<i><b>What can I put here?</b></i>  A JavaScript class, with any valid JavaScript inside.  Your code can use classes from this demo,
+                               <br>or from ANY demo on Demopedia --  the dependencies will automatically be pulled in to run your demo!<br>`;
+      
+      const run_button = this.run_button = form.appendChild( document.createElement( "button" ) );
+      run_button.type             = "button";
+      run_button.style            = "background:maroon";
+      run_button.textContent      = "Run with Changes";
+
+      const submit = this.submit = form.appendChild( document.createElement( "button" ) );
+      submit.type                 = "submit";
+      submit.textContent          = "Save as New Webpage";
+
+      const author_box = this.author_box = form.appendChild( document.createElement( "input" ) );
+      author_box.name             = "author";
+      author_box.type             = "text";
+      author_box.placeholder      = "Author name";
+      
+      const password_box = this.password_box = form.appendChild( document.createElement( "input" ) );
+      password_box.name           = "password";
+      password_box.type           = "text";
+      password_box.placeholder    = "Password";
+      password_box.style          = "display:none";
+
+      const overwrite_panel = this.overwrite_panel = form.appendChild( document.createElement( "span" ) );
+      overwrite_panel.style       = "display:none";
+      overwrite_panel.innerHTML   = "<label>Overwrite?<input type='checkbox' name='overwrite' autocomplete='off'></label>";
+
+      const submit_result = this.submit_result = form.appendChild( document.createElement( "div" ) );
+      submit_result.style         = "margin: 10px 0";
+
+      const new_demo_code = this.new_demo_code = form.appendChild( document.createElement( "textarea" ) );
+      new_demo_code.name    = "new_demo_code";
+      new_demo_code.rows    = this.options.rows || 25;
+      new_demo_code.cols    = 140;
+      if( initially_selected_class )
+        this.select_class( initially_selected_class );
+    }
+  select_class( class_definition )
+    { this.new_demo_code.value = class_definition.toString(); }
+  fetch_handler( url, body )          // A general utility function for sending / receiving JSON, with error handling.
+    { return fetch( url,
+      { body: body, method: body === undefined ? 'GET' : 'POST', 
+        headers: { 'content-type': 'application/json'  } 
+      }).then( response =>
+      { if ( response.ok )  return Promise.resolve( response.json() )
+        else                return Promise.reject ( response.status )
+      })
+    }
+  submit_demo()
+    { const form_fields = Array.from( this.form.elements ).reduce( ( accum, elem ) => 
+        { if( elem.value && !( ['checkbox', 'radio'].includes( elem.type ) && !elem.checked ) )
+            accum[ elem.name ] = elem.value; 
+          return accum;
+        }, {} );
+        
+      this.submit_result.innerHTML = "";
+      return this.fetch_handler( "/submit-demo?Unapproved", JSON.stringify( form_fields ) )
+        .then ( response => { if( response.show_password  ) this.password_box.style.display = "inline";
+                              if( response.show_overwrite ) this.overwrite_panel.style.display = "inline";
+                              this.submit_result.innerHTML += response.message + "<br>"; } )
+        .catch(    error => { this.submit_result.innerHTML += "Error " + error + " when trying to upload.<br>" } )
+    }
+}
+
+
 const Text_Widget = widgets.Text_Widget =
 class Text_Widget
 {                                                // **Text_Widget** generates HTML documentation and fills a panel with it.  This
                                                  // documentation is extracted from whichever Scene object gets loaded first.
   constructor( element, scenes, webgl_manager ) 
     { const rules = [ ".text-widget { background: white; width:1060px;\
-                        padding:0 10px; overflow:auto; transition:1s; overflow-y:scroll; box-shadow: 10px 10px 90px 0 inset Gray}" ];
+                        padding:0 10px; overflow:auto; transition:1s; overflow-y:scroll; box-shadow: 10px 10px 90px 0 inset LightGray}",
+                      ".text-widget div { transition:none } "
+                    ];
       if( document.styleSheets.length == 0 ) document.head.appendChild( document.createElement( "style" ) );
       for( const r of rules ) document.styleSheets[document.styleSheets.length - 1].insertRule( r, 0 )
 

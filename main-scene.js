@@ -1,7 +1,7 @@
 import {tiny, defs} from './assignment-3-resources.js';
-                                                                // Pull these names into this module's scope for convenience:
-const { Vec, Mat, Mat4, Color, Shape, Shader,
-         Scene, Canvas_Widget, Code_Widget, Text_Widget } = tiny;
+                                                  // Pull these names into this module's scope for convenience:
+const { Vector, Vector3, vec, vec3, vec4, color, Matrix, Mat4, Light, Shape, Material, Shader, Texture, Scene,
+        Canvas_Widget, Code_Widget, Text_Widget } = tiny;
 const { Cube, Subdivision_Sphere, Transforms_Sandbox_Base } = defs;
 
     // Now we have loaded everything in the files tiny-graphics.js, tiny-graphics-widgets.js, and assignment-3-resources.js.
@@ -44,7 +44,7 @@ class Transforms_Sandbox extends Transforms_Sandbox_Base
                                                   // translation(), scale(), and rotation() to generate matrices, and the 
                                                   // function times(), which generates products of matrices.
 
-      const blue = Color.of( 0,0,1,1 ), yellow = Color.of( 1,1,0,1 );
+      const blue = color( 0,0,1,1 ), yellow = color( 1,1,0,1 );
 
                                     // Variable model_transform will be a local matrix value that helps us position shapes.
                                     // It starts over as the identity every single frame - coordinate axes at the origin.
@@ -60,12 +60,12 @@ class Transforms_Sandbox extends Transforms_Sandbox_Base
 
                                                      // Position the root shape.  For this example, we'll use a box 
                                                      // shape, and place it at the coordinate origin 0,0,0:
-      model_transform = model_transform.times( Mat4.translation([ 0,0,0 ]) );
+      model_transform = model_transform.times( Mat4.translation( 0,0,0 ) );
                                                                                               // Draw the top box:
       this.shapes.box.draw( context, program_state, model_transform, this.materials.plastic.override( yellow ) );
       
                                                      // Tweak our coordinate system downward 2 units for the next shape.
-      model_transform = model_transform.times( Mat4.translation([ 0, -2, 0 ]) );
+      model_transform = model_transform.times( Mat4.translation( 0, -2, 0 ) );
                                                                            // Draw the ball, a child of the hierarchy root.
                                                                            // The ball will have its own children as well.
       this.shapes.ball.draw( context, program_state, model_transform, this.materials.metal.override( blue ) );
@@ -79,7 +79,7 @@ class Transforms_Sandbox extends Transforms_Sandbox_Base
                                                       // Spin our current coordinate frame as a function of time.  Only do
                                                       // this movement if the button on the page has not been toggled off.
       if( !this.hover )
-        model_transform = model_transform.times( Mat4.rotation( t, Vec.of( 0,1,0 ) ) )
+        model_transform = model_transform.times( Mat4.rotation( t,   0,1,0 ) )
 
                                                       // Perform three transforms in a row.
                                                       // Rotate the coordinate frame counter-clockwise by 1 radian,
@@ -88,9 +88,9 @@ class Transforms_Sandbox extends Transforms_Sandbox_Base
                                                       // That translation is enough for the box and ball volume to miss
                                                       // one another (new box radius = 2, ball radius = 1, coordinate
                                                       // frame axis is currently doubled in size).
-      model_transform   = model_transform.times( Mat4.rotation( 1, Vec.of( 0,0,1 ) ) )
-                                         .times( Mat4.scale      ([ 1,   2, 1 ]) )
-                                         .times( Mat4.translation([ 0,-1.5, 0 ]) );
+      model_transform   = model_transform.times( Mat4.rotation( 1,     0,0,1 ) )
+                                         .times( Mat4.scale      ( 1,   2, 1 ) )
+                                         .times( Mat4.translation( 0,-1.5, 0 ) );
                                                                                     // Draw the bottom (child) box:
       this.shapes.box.draw( context, program_state, model_transform, this.materials.plastic.override( yellow ) );
 
